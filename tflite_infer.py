@@ -4,6 +4,20 @@ import numpy as np
 import cv2
 
 ######
+### Load TFLite model
+######
+interpreter = tf.lite.Interpreter(model_path="resnet34_peoplenet_int8.tflite")
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+### for Debug
+# print(input_details)
+# [{'name': 'serving_default_input_1:0', 'index': 0, 'shape': array([  1, 544, 960,   3], dtype=int32), 'shape_signature': array([  1, 544, 960,   3], dtype=int32), 'dtype': <class 'numpy.int8'>, 'quantization': (0.003921565134078264, -128), 'quantization_parameters': {'scales': array([0.00392157], dtype=float32), 'zero_points': array([-128], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}]
+# print(output_details)
+# [{'name': 'PartitionedCall:1', 'index': 178, 'shape': array([ 1, 34, 60, 12], dtype=int32), 'shape_signature': array([ 1, 34, 60, 12], dtype=int32), 'dtype': <class 'numpy.float32'>, 'quantization': (0.0, 0), 'quantization_parameters': {'scales': array([], dtype=float32), 'zero_points': array([], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}, {'name': 'PartitionedCall:0', 'index': 176, 'shape': array([ 1, 34, 60,  3], dtype=int32), 'shape_signature': array([ 1, 34, 60,  3], dtype=int32), 'dtype': <class 'numpy.float32'>, 'quantization': (0.0, 0), 'quantization_parameters': {'scales': array([], dtype=float32), 'zero_points': array([], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}]
+
+######
 ### Generate Input Tensor
 ######
 ### Load Image
@@ -16,32 +30,22 @@ height, width, channel = img.shape
 img_resized = cv2.resize(img, (960, 544))
 img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
 # uint8
-print(img_rgb.dtype) 
+# print(img_rgb.dtype) 
 # 255 / 0
-print(img_rgb.max(), img_rgb.min()) 
+# print(img_rgb.max(), img_rgb.min()) 
 img_signed_int8 = img_rgb - 128
 ### make Input Tensor
 predict_img = np.expand_dims(img_signed_int8, axis=0).astype("int8")
 # int8
-print(predict_img.dtype)
+# print(predict_img.dtype)
 # 127 / -128
-print(predict_img.max(), predict_img.min())
+# print(predict_img.max(), predict_img.min())
 # (1, 544, 960, 3)
-print(predict_img.shape) 
+# print(predict_img.shape) 
 
 ######
-### Load TFLite model
+### set Tensor <<-- predict_img
 ######
-interpreter = tf.lite.Interpreter(model_path="resnet34_peoplenet_int8.tflite")
-interpreter.allocate_tensors()
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-
-print(input_details)
-# [{'name': 'serving_default_input_1:0', 'index': 0, 'shape': array([  1, 544, 960,   3], dtype=int32), 'shape_signature': array([  1, 544, 960,   3], dtype=int32), 'dtype': <class 'numpy.int8'>, 'quantization': (0.003921565134078264, -128), 'quantization_parameters': {'scales': array([0.00392157], dtype=float32), 'zero_points': array([-128], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}]
-print(output_details)
-# [{'name': 'PartitionedCall:1', 'index': 178, 'shape': array([ 1, 34, 60, 12], dtype=int32), 'shape_signature': array([ 1, 34, 60, 12], dtype=int32), 'dtype': <class 'numpy.float32'>, 'quantization': (0.0, 0), 'quantization_parameters': {'scales': array([], dtype=float32), 'zero_points': array([], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}, {'name': 'PartitionedCall:0', 'index': 176, 'shape': array([ 1, 34, 60,  3], dtype=int32), 'shape_signature': array([ 1, 34, 60,  3], dtype=int32), 'dtype': <class 'numpy.float32'>, 'quantization': (0.0, 0), 'quantization_parameters': {'scales': array([], dtype=float32), 'zero_points': array([], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}]
-
 # set input
 interpreter.set_tensor(input_details[0]['index'], predict_img)
 
@@ -55,16 +59,19 @@ output_data_bbox = interpreter.get_tensor(output_details[0]['index'])
 output_data_class = interpreter.get_tensor(output_details[1]['index'])
 
 ### check Output[0] (for bbox?)
+# Debug
 # (1, 34, 60, 12)
-print(output_data_bbox.shape) 
-print(output_data_bbox)
+# print(output_data_bbox.shape) 
+# print(output_data_bbox)
 
 ### check Output[1] (for class?)
+# Debug
 # (1, 34, 60, 3)
-print(output_data_class.shape) 
-print(output_data_class)
+# print(output_data_class.shape) 
+# print(output_data_class)
 
-print(output_data_class.max(), output_data_class.min()) # 0.5 0.0
+# Debug
+# print(output_data_class.max(), output_data_class.min()) # 0.5 0.0
 
 ######
 ### reference
@@ -90,7 +97,7 @@ class PeopleNetPostProcess(object):
         self.grid_w = int(self.model_w / self.strideX)
         self.grid_size = self.grid_h * self.grid_w
         # debug
-        print(self.grid_h, self.grid_w, self.grid_size)
+        # print(self.grid_h, self.grid_w, self.grid_size)
 
         ### make Grid Information
         self.grid_centers_w = []
@@ -105,8 +112,8 @@ class PeopleNetPostProcess(object):
             self.grid_centers_w.append(value)
 
         # debug
-        print(self.grid_centers_h)
-        print(self.grid_centers_w)
+        # print(self.grid_centers_h)
+        # print(self.grid_centers_w)
 
         ### thresholds
         self.min_confidence = score_threshold
@@ -147,7 +154,8 @@ class PeopleNetPostProcess(object):
                         bbox_idx_end = (c+1) * 4
                         bbox_part = bbox_raw[bbox_idx_start:bbox_idx_end]
                         # print Bounding Box Info
-                        print(h, w, c, bbox_part)
+                        # debug
+                        # print(h, w, c, bbox_part)
                         ### get Offset BBOX from Center of Grid
                         o1, o2, o3, o4 = bbox_part
                         # grid-center - o1 = LEFT
@@ -161,14 +169,16 @@ class PeopleNetPostProcess(object):
                         xmax_model = int(o3)
                         ymax_model = int(o4)
                         # print Normalized Bounding Box
-                        print(h, w, c, xmin_model, ymin_model, xmax_model, ymax_model)  
+                        # debug
+                        # print(h, w, c, xmin_model, ymin_model, xmax_model, ymax_model)  
                         ### get POS BBOX for non-resized (original) image
                         xmin_image = self.change_model_size_to_real(xmin_model, 'x')
                         ymin_image = self.change_model_size_to_real(ymin_model, 'y')
                         xmax_image = self.change_model_size_to_real(xmax_model, 'x')
                         ymax_image = self.change_model_size_to_real(ymax_model, 'y')
                         # print Normalized Bounding Box
-                        print(h, w, c, xmin_image, ymin_image, xmax_image, ymax_image)  
+                        # debug
+                        # print(h, w, c, xmin_image, ymin_image, xmax_image, ymax_image)  
                         # Put BoundingBox 
                         boundingbox = (xmin_image, ymin_image, xmax_image, ymax_image)
                         boundingboxes.append(boundingbox)
