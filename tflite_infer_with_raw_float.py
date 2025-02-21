@@ -118,6 +118,7 @@ class PeopleNetPostProcess(object):
         ### thresholds
         self.min_confidence = score_threshold
         self.num_of_totalclasses = 3
+        self.num_of_axis = 4
 
     def applyBoxNorm(self, o1, o2, o3, o4, w, h):
         o1 = (self.grid_centers_w[w] - o1) * self.bboxNormX
@@ -135,7 +136,24 @@ class PeopleNetPostProcess(object):
         real_size = int(real_size)
         return real_size
 
+    def offset_in_feature_bbox(self, c, h, w):
+        offset = (h * self.grid_w * self.num_of_totalclasses * self.num_of_axis) + (w * self.num_of_totalclasses * self.num_of_axis) + c
+        return offset
+    
+    def offset_in_feature_classes(self, c, h, w):
+        offset = (h * self.grid_w * self.num_of_totalclasses) + (w * self.num_of_totalclasses) + c
+        return offset
+
     def start(self, feature_bbox, feature_scores, classes=[0]):
+
+        float_feature_bbox = feature_bbox.reshape(-1)
+        float_feature_scores = feature_scores.reshape(-1)
+
+        # print(self.offset_in_feature_bbox(0, 0, 0))
+        # print(self.offset_in_feature_bbox(0, 1, 0))
+        # print(self.offset_in_feature_bbox(0, 1, 2))
+        # print(self.offset_in_feature_bbox(1, 1, 2))
+
         boundingboxes = []
         self.analysis_classeds = classes
 
@@ -144,25 +162,20 @@ class PeopleNetPostProcess(object):
             ### search in Grid HxW
             for h in range(self.grid_h):
                 for w in range(self.grid_w):
-                    ### check probability
-                    class_probability = feature_scores[h][w][c]
-                    if class_probability >= self.min_confidence:  
-                        print("found", h, w, c)              
-                        # get Bounding Box Info (for-all classes)
-                        bbox_raw = feature_bbox[h][w]
-                        # for Single-Class
-                        bbox_idx_start = c * 4
-                        bbox_idx_end = (c+1) * 4
-                        bbox_part = bbox_raw[bbox_idx_start:bbox_idx_end]
-                        # print Bounding Box Info
+                    ### check probalility
+                    class_probability = float_feature_scores[self.offset_in_feature_classes(c, h, w)]
+                    if class_probability >= self.min_confidence:                
                         # debug
-                        # print(h, w, c, bbox_part)
-                        ### get Offset BBOX from Center of Grid
-                        o1, o2, o3, o4 = bbox_part
+                        # print("found", h, w, c)
+                        # get Bounding Box Info (for-all classes)
                         # grid-center - o1 = LEFT
                         # grid-center + o3 = RIGHT
                         # grid-center - o2 = TOP
                         # grid-center + o4 = BOTTOM
+                        o1 = float_feature_bbox[self.offset_in_feature_bbox(c, h, w) + 0]
+                        o2 = float_feature_bbox[self.offset_in_feature_bbox(c, h, w) + 1]
+                        o3 = float_feature_bbox[self.offset_in_feature_bbox(c, h, w) + 2]
+                        o4 = float_feature_bbox[self.offset_in_feature_bbox(c, h, w) + 3]
                         ### get POS BBOX for resized image
                         o1, o2, o3, o4 = self.applyBoxNorm(o1, o2, o3, o4, w, h)
                         xmin_model = int(o1)
