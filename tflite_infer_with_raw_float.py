@@ -33,7 +33,11 @@ img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
 # print(img_rgb.dtype) 
 # 255 / 0
 # print(img_rgb.max(), img_rgb.min()) 
-img_signed_int8 = img_rgb - 128
+
+img_rgb = img_rgb.astype(np.int32)
+img_rgb = img_rgb - 128
+img_signed_int8 = img_rgb.astype(np.int8)
+
 ### make Input Tensor
 predict_img = np.expand_dims(img_signed_int8, axis=0).astype("int8")
 # int8
@@ -100,16 +104,12 @@ class PeopleNetPostProcess(object):
         # print(self.grid_h, self.grid_w, self.grid_size)
 
         ### make Grid Information
-        self.grid_centers_w = []
-        self.grid_centers_h = []
-
+        self.grid_centers_w = [0] * self.grid_w
+        self.grid_centers_h = [0] * self.grid_h
         for i in range(self.grid_h):
-            value = (i * self.strideY + 0.5) / self.bboxNormY
-            self.grid_centers_h.append(value)
-
+            self.grid_centers_h[i] = (i * self.strideY + 0.5) / self.bboxNormY
         for i in range(self.grid_w):
-            value = (i * self.strideX + 0.5) / self.bboxNormX
-            self.grid_centers_w.append(value)
+            self.grid_centers_w[i] = (i * self.strideX + 0.5) / self.bboxNormX
 
         # debug
         # print(self.grid_centers_h)
