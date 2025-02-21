@@ -7,7 +7,8 @@ import cv2
 ### Generate Input Tensor
 ######
 ### Load Image
-img = cv2.imread("input.jpg")
+#img = cv2.imread("input.jpg")
+img = cv2.imread("sample_1080p_h265_frame_input.png")
 ### image information
 height, width, channel = img.shape
 
@@ -182,6 +183,6 @@ for bbox in boundingboxes:
     left, top, right, bottom = bbox
     cv2.rectangle(img, (left, top), (right, bottom), (0, 0, 255), 2)
 
-cv2.imwrite('output.jpg', img)
+cv2.imwrite('sample_1080p_h265_frame_output.png', img)
 
 
