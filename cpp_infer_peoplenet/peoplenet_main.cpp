@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <list>
 #include <opencv2/opencv.hpp>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -6,8 +7,8 @@
 #include "tensorflow/lite/optional_debug_tools.h"
 
 #define MODEL_FILENAME RESOURCE_DIR"resnet34_peoplenet_int8.tflite"
-//#define INPUT_FILENAME RESOURCE_DIR"sample_1080p_h265_frame_input.png"
-#define INPUT_FILENAME RESOURCE_DIR"input.jpg"
+#define INPUT_FILENAME RESOURCE_DIR"sample_1080p_h265_frame_input.png"
+//#define INPUT_FILENAME RESOURCE_DIR"input.jpg"
 
 #define TFLITE_MINIMAL_CHECK(x)                              \
     if (!(x)) {                                                \
@@ -15,34 +16,164 @@
         exit(1);                                                 \
     }
 
+/* Pre/PostProcess for TensorFlow Lite Model for C/C++ */
+class PeopleNetPrePostProcess 
+{
+    public:
+
+    typedef struct s_boundingbox_type {
+        int left;
+        int top;
+        int right;
+        int bottom;
+    } boundingbox;
+
+    private:
+
+    const int MODEL_WIDTH = 960;
+    const int MODEL_HEIGHT = 544;
+    const int MODEL_CHANNEL = 3;
+
+    const int INFER_CLASSES = 3;
+    const int INFER_BBOX_SIZE = 4;
+    const int GRID_WIDTH = 60;
+    const int GRID_HEIGHT = 34;
+
+    const float GRID_STRIDE = 16.0;
+    const float GRID_BBOX_NORM = 35.0;
+
+    int width_orig_image = -1;
+    int height_orig_image = -1;
+
+    float grid_centers_w[60];
+    float grid_centers_h[34];
+
+    public:
+    
+    PeopleNetPrePostProcess
+    (int width_orig, int height_orig) 
+    {
+        width_orig_image = width_orig;
+        height_orig_image = height_orig;
+
+        printf("original width=%d, height=%d", 
+            width_orig_image, height_orig_image);
+
+        for (int i = 0; i < GRID_WIDTH; i++) {
+            grid_centers_w[i] = (i * GRID_STRIDE + 0.5) / GRID_BBOX_NORM;
+            printf("[%d]%lf ", i, grid_centers_w[i]);
+        }
+    
+        for (int i = 0; i < GRID_HEIGHT; i++) {
+            grid_centers_h[i] = (i * GRID_STRIDE + 0.5) / GRID_BBOX_NORM;
+            printf("[%d]%lf ", i, grid_centers_h[i]);
+        }
+    }
+
+    int 
+    getSizeOfInputTensor
+    (void)
+    {
+        return sizeof(signed char) * 1 * MODEL_HEIGHT * MODEL_WIDTH * MODEL_CHANNEL;
+    }
+
+    int 
+    changeModelSizeToReal
+    (float model_size, bool axis_W)
+    {
+        float real_size = 0;
+        if (axis_W == true) {
+            real_size = (float(model_size) / float(MODEL_WIDTH)) * width_orig_image;
+        } else {
+            real_size = (float(model_size) / float(MODEL_HEIGHT)) * height_orig_image;
+        }
+        return int(real_size);
+    }
+    
+    cv::Mat 
+    preProcessPeopleNet
+    (cv::Mat image)
+    {
+        cv::Mat img_resize = image.clone();
+        cv::resize(img_resize, img_resize, cv::Size(MODEL_WIDTH, MODEL_HEIGHT));
+        cv::cvtColor(img_resize, img_resize, cv::COLOR_BGR2RGB);
+        /* 入力テンソル int8 : -128 ~ 127 にする */
+        double mMin, mMax;
+        cv::minMaxLoc(img_resize, &mMin, &mMax);
+        printf("Orig: max = %lf, min = %lf\n", mMax, mMin);
+        img_resize.convertTo(img_resize, CV_32SC3);
+        cv::Mat offset(MODEL_HEIGHT, MODEL_WIDTH, CV_32SC3, cv::Scalar::all(-128));
+        img_resize = img_resize + offset;
+        cv::minMaxLoc(img_resize, &mMin, &mMax);
+        printf("SUBed : max = %lf, min = %lf\n", mMax, mMin);
+        img_resize.convertTo(img_resize, CV_8SC3);
+        cv::minMaxLoc(img_resize, &mMin, &mMax);
+        printf("Input : max = %lf, min = %lf\n", mMax, mMin);
+
+        return img_resize;
+    }
+
+    std::list<PeopleNetPrePostProcess::boundingbox> 
+    postProcessPeopleNet
+    (float *output_tensor_classes, float *output_tensor_bbox)
+    {
+        std::list<PeopleNetPrePostProcess::boundingbox> boundingboxes;
+
+        for (int c = 0; c < INFER_CLASSES; c++) {
+            for (int h = 0; h < GRID_HEIGHT; h++) {
+                for (int w = 0; w < GRID_WIDTH; w++) {
+                    int offset_output_class = (h * GRID_WIDTH * INFER_CLASSES) + (w * INFER_CLASSES) + c;
+                    float grid_acc = output_tensor_classes[offset_output_class];
+                    if (grid_acc >= 0.5) {
+                        //printf("H=%d, W=%d, C=%d (%lf)\n", h, w, c, grid_acc);
+    
+                        /* Decode BBOX */
+                        int offset_output_bbox = 
+                            (h * GRID_WIDTH * INFER_CLASSES * INFER_BBOX_SIZE) 
+                            + (w * INFER_CLASSES * INFER_BBOX_SIZE) + c;
+                        float o1 = output_tensor_bbox[offset_output_bbox + 0];
+                        float o2 = output_tensor_bbox[offset_output_bbox + 1];
+                        float o3 = output_tensor_bbox[offset_output_bbox + 2];
+                        float o4 = output_tensor_bbox[offset_output_bbox + 3];
+                        //printf("BBOX Information = %lf, %lf, %lf, %lf\n", o1, o2, o3, o4);
+    
+                        //printf("BBOX grid_centers_w = %lf, grid_centers_h =%lf\n", grid_centers_w[w], grid_centers_h[h]);
+                        o1 = (grid_centers_w[w] - o1) * GRID_BBOX_NORM;
+                        o2 = (grid_centers_h[h] - o2) * GRID_BBOX_NORM;
+                        o3 = (o3 + grid_centers_w[w]) * GRID_BBOX_NORM;
+                        o4 = (o4 + grid_centers_h[h]) * GRID_BBOX_NORM;
+    
+                        int left = changeModelSizeToReal(o1, true);
+                        int top = changeModelSizeToReal(o2, false);
+                        int right = changeModelSizeToReal(o3, true);
+                        int bottom = changeModelSizeToReal(o4, false);
+                        //printf("BBOX Information = %d, %d, %d, %d\n", left, top, right, bottom);
+                        PeopleNetPrePostProcess::boundingbox bbox = 
+                            {.left=left, .top=top, .right=right, .bottom=bottom};
+                        boundingboxes.push_back(bbox);
+                    }
+                }
+            }
+        }
+        return boundingboxes;
+    }
+    
+};
+
 int main()
 {
     /* 入力となる画像データを読み込む "4.jpg" */
     printf("input image path : %s\n", INPUT_FILENAME);
     cv::Mat image = cv::imread(INPUT_FILENAME);
+    int orig_width = image.cols;
+    int orig_height = image.rows;
+    PeopleNetPrePostProcess peopleNetPrePost(orig_width, orig_height);
+
     /* ディスプレイに出力する */
     cv::imwrite("./.tmp.input.jpg", image);
-    
-    /* 出力用の画像 */
-    cv::Mat img_output = image.clone();
-    cv::resize(img_output, img_output, cv::Size(960, 544));
 
-    /* 入力テンソル用の画像 */
-    cv::Mat img_resize = image.clone();
-    cv::resize(img_resize, img_resize, cv::Size(960, 544));
-    cv::cvtColor(img_resize, img_resize, cv::COLOR_BGR2RGB);
-    /* 入力テンソル int8 : -128 ~ 127 にする */
-    double mMin, mMax;
-    cv::minMaxLoc(img_resize, &mMin, &mMax);
-    printf("Orig: max = %lf, min = %lf\n", mMax, mMin);
-    img_resize.convertTo(img_resize, CV_32SC3);
-    cv::Mat offset(544, 960, CV_32SC3, cv::Scalar::all(-128));
-    img_resize = img_resize + offset;
-    cv::minMaxLoc(img_resize, &mMin, &mMax);
-    printf("SUBed : max = %lf, min = %lf\n", mMax, mMin);
-    img_resize.convertTo(img_resize, CV_8SC3);
-    cv::minMaxLoc(img_resize, &mMin, &mMax);
-    printf("Input : max = %lf, min = %lf\n", mMax, mMin);
+    /* convert from Image to Tensor */
+    cv::Mat input_tensor = peopleNetPrePost.preProcessPeopleNet(image);
 
     /* tfliteモデルのパス */
     printf("model file name : %s\n", MODEL_FILENAME);
@@ -62,77 +193,36 @@ int main()
 	/* 入出力のバッファを確保する */
 	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
 	printf("=== Pre-invoke Interpreter State ===\n");
-	//tflite::PrintInterpreterState(interpreter.get());
+	tflite::PrintInterpreterState(interpreter.get());
 
 	/* 入力テンソルに読み込んだ画像を格納する */
 	signed char* input_sc_rgb = interpreter->typed_input_tensor<signed char>(0);
-    memcpy(input_sc_rgb, img_resize.reshape(0, 1).data, sizeof(signed char) * 1 * 544 * 960 * 3);
+    memcpy(input_sc_rgb, input_tensor.data, peopleNetPrePost.getSizeOfInputTensor());
     
 	/* 推論を実行 */
 	TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
 	printf("\n\n=== Post-invoke Interpreter State ===\n");
-	//tflite::PrintInterpreterState(interpreter.get());
+	tflite::PrintInterpreterState(interpreter.get());
 
 	/* 出力テンソルから結果を取得して表示 */
 	float* output_grid_info_bbox = interpreter->typed_output_tensor<float>(0);
     float* output_grid_info_class = interpreter->typed_output_tensor<float>(1);
 
-#if 0
-    printf("\n---- BBOX ----\n");
-    for (int i = 0; i < 1 * 34 * 60 * 12; i++) {
-        printf("%lf ", output_grid_info_bbox[i]);
-    }
-#endif
-    
-    float grid_centers_w[60];
-    float grid_centers_h[34];
+    /* 出力テンソルからBoundingBoxを生成する */
+    std::list<PeopleNetPrePostProcess::boundingbox> boundingboxes;
+    boundingboxes = peopleNetPrePost.postProcessPeopleNet(output_grid_info_class, output_grid_info_bbox);
 
-    for (int i = 0; i < 60; i++) {
-        grid_centers_w[i] = (i * 16.0 + 0.5) / 35.0;
-        printf("[%d]%lf ", i, grid_centers_w[i]);
-    }
-
-    for (int i = 0; i < 34; i++) {
-        grid_centers_h[i] = (i * 16.0 + 0.5) / 35.0;
-        printf("[%d]%lf ", i, grid_centers_h[i]);
-    }
-    
-    printf("\n---- CLASS ----\n");
-    for (int c = 0; c < 3; c++) {
-        for (int h = 0; h < 34; h++) {
-            for (int w = 0; w < 60; w++) {
-                int offset_output_class = (h * 60 * 3) + (w * 3) + c;
-                float grid_acc = output_grid_info_class[offset_output_class];
-                if (grid_acc >= 0.5) {
-                    printf("H=%d, W=%d, C=%d (%lf)\n", h, w, c, grid_acc);
-
-                    /* Decode BBOX */
-                    int offset_output_bbox = (h * 60 * 3 * 4) + (w * 3 * 4) + c;
-                    float o1 = output_grid_info_bbox[offset_output_bbox + 0];
-                    float o2 = output_grid_info_bbox[offset_output_bbox + 1];
-                    float o3 = output_grid_info_bbox[offset_output_bbox + 2];
-                    float o4 = output_grid_info_bbox[offset_output_bbox + 3];
-                    printf("BBOX Information = %lf, %lf, %lf, %lf\n", o1, o2, o3, o4);
-
-                    printf("BBOX grid_centers_w = %lf, grid_centers_h =%lf\n", grid_centers_w[w], grid_centers_h[h]);
-                    o1 = (grid_centers_w[w] - o1) * 35.0;
-                    o2 = (grid_centers_h[h] - o2) * 35.0;
-                    o3 = (o3 + grid_centers_w[w]) * 35.0;
-                    o4 = (o4 + grid_centers_h[h]) * 35.0;
-
-                    int left = int(o1);
-                    int top = int(o2);
-                    int right = int(o3);
-                    int bottom = int(o4);
-                    printf("BBOX Information = %d, %d, %d, %d\n", left, top, right, bottom);
-                    cv::rectangle(img_output, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(0, 0, 255), 2);
-                }
-            }
-        }
+    /* BoundingBoxを描画する */
+    std::list<PeopleNetPrePostProcess::boundingbox>::iterator itr_bbox;
+    for (itr_bbox = boundingboxes.begin(); itr_bbox != boundingboxes.end(); itr_bbox++) {
+        cv::rectangle(image, 
+            cv::Point(itr_bbox->left, itr_bbox->top),
+            cv::Point(itr_bbox->right, itr_bbox->bottom),
+            cv::Scalar(0, 0, 255), 2);
     }
 
     /* ディスプレイに出力する */
-    cv::imwrite("./.tmp.output.jpg", img_output);
+    cv::imwrite("./.tmp.output.jpg", image);
 
     /* 終了 */
 	return 0;
