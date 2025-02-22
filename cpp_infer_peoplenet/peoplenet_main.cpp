@@ -6,6 +6,8 @@
 #include "tensorflow/lite/optional_debug_tools.h"
 
 #define MODEL_FILENAME RESOURCE_DIR"resnet34_peoplenet_int8.tflite"
+//#define INPUT_FILENAME RESOURCE_DIR"sample_1080p_h265_frame_input.png"
+#define INPUT_FILENAME RESOURCE_DIR"input.jpg"
 
 #define TFLITE_MINIMAL_CHECK(x)                              \
     if (!(x)) {                                                \
@@ -16,30 +18,31 @@
 int main()
 {
     /* 入力となる画像データを読み込む "4.jpg" */
-    printf("input image path : %s\n", RESOURCE_DIR"input.jpg");
-    cv::Mat image = cv::imread(RESOURCE_DIR"input.jpg");
+    printf("input image path : %s\n", INPUT_FILENAME);
+    cv::Mat image = cv::imread(INPUT_FILENAME);
     /* ディスプレイに出力する */
     cv::imwrite("./.tmp.input.jpg", image);
     
-    /* 入力画像を入力テンソルへと変換する */
-    cv::Mat img_resize = image.clone();
-    cv::Mat img_output = image.clone();
-    
     /* 出力用の画像 */
+    cv::Mat img_output = image.clone();
     cv::resize(img_output, img_output, cv::Size(960, 544));
 
     /* 入力テンソル用の画像 */
-    cv::cvtColor(img_resize, img_resize, cv::COLOR_BGR2RGB);
+    cv::Mat img_resize = image.clone();
     cv::resize(img_resize, img_resize, cv::Size(960, 544));
+    cv::cvtColor(img_resize, img_resize, cv::COLOR_BGR2RGB);
     /* 入力テンソル int8 : -128 ~ 127 にする */
     double mMin, mMax;
     cv::minMaxLoc(img_resize, &mMin, &mMax);
-    printf("max = %lf, min = %lf", mMax, mMin);
-    img_resize.convertTo(image, CV_32SC3);
-    img_resize = img_resize - 128;
+    printf("Orig: max = %lf, min = %lf\n", mMax, mMin);
+    img_resize.convertTo(img_resize, CV_32SC3);
+    cv::Mat offset(544, 960, CV_32SC3, cv::Scalar::all(-128));
+    img_resize = img_resize + offset;
+    cv::minMaxLoc(img_resize, &mMin, &mMax);
+    printf("SUBed : max = %lf, min = %lf\n", mMax, mMin);
     img_resize.convertTo(img_resize, CV_8SC3);
     cv::minMaxLoc(img_resize, &mMin, &mMax);
-    printf("max = %lf, min = %lf", mMax, mMin);
+    printf("Input : max = %lf, min = %lf\n", mMax, mMin);
 
     /* tfliteモデルのパス */
     printf("model file name : %s\n", MODEL_FILENAME);
@@ -59,7 +62,7 @@ int main()
 	/* 入出力のバッファを確保する */
 	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
 	printf("=== Pre-invoke Interpreter State ===\n");
-	tflite::PrintInterpreterState(interpreter.get());
+	//tflite::PrintInterpreterState(interpreter.get());
 
 	/* 入力テンソルに読み込んだ画像を格納する */
 	signed char* input_sc_rgb = interpreter->typed_input_tensor<signed char>(0);
@@ -68,7 +71,7 @@ int main()
 	/* 推論を実行 */
 	TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
 	printf("\n\n=== Post-invoke Interpreter State ===\n");
-	tflite::PrintInterpreterState(interpreter.get());
+	//tflite::PrintInterpreterState(interpreter.get());
 
 	/* 出力テンソルから結果を取得して表示 */
 	float* output_grid_info_bbox = interpreter->typed_output_tensor<float>(0);
@@ -89,7 +92,7 @@ int main()
         printf("[%d]%lf ", i, grid_centers_w[i]);
     }
 
-    for (int i = 0; i < 60; i++) {
+    for (int i = 0; i < 34; i++) {
         grid_centers_h[i] = (i * 16.0 + 0.5) / 35.0;
         printf("[%d]%lf ", i, grid_centers_h[i]);
     }
@@ -104,18 +107,19 @@ int main()
                     printf("H=%d, W=%d, C=%d (%lf)\n", h, w, c, grid_acc);
 
                     /* Decode BBOX */
-                    int offset_output_bbox = (h * 60 * 4 * 3) + (w * 4 * 3) + (c * 4);
+                    int offset_output_bbox = (h * 60 * 3 * 4) + (w * 3 * 4) + c;
                     float o1 = output_grid_info_bbox[offset_output_bbox + 0];
                     float o2 = output_grid_info_bbox[offset_output_bbox + 1];
                     float o3 = output_grid_info_bbox[offset_output_bbox + 2];
                     float o4 = output_grid_info_bbox[offset_output_bbox + 3];
                     printf("BBOX Information = %lf, %lf, %lf, %lf\n", o1, o2, o3, o4);
 
+                    printf("BBOX grid_centers_w = %lf, grid_centers_h =%lf\n", grid_centers_w[w], grid_centers_h[h]);
                     o1 = (grid_centers_w[w] - o1) * 35.0;
                     o2 = (grid_centers_h[h] - o2) * 35.0;
                     o3 = (o3 + grid_centers_w[w]) * 35.0;
                     o4 = (o4 + grid_centers_h[h]) * 35.0;
-                    
+
                     int left = int(o1);
                     int top = int(o2);
                     int right = int(o3);
