@@ -7,8 +7,8 @@
 #include "tensorflow/lite/optional_debug_tools.h"
 
 #define MODEL_FILENAME RESOURCE_DIR"resnet34_peoplenet_int8.tflite"
-#define INPUT_FILENAME RESOURCE_DIR"sample_1080p_h265_frame_input.png"
-//#define INPUT_FILENAME RESOURCE_DIR"input.jpg"
+//#define INPUT_FILENAME RESOURCE_DIR"sample_1080p_h265_frame_input.png"
+#define INPUT_FILENAME RESOURCE_DIR"input.jpg"
 
 #define TFLITE_MINIMAL_CHECK(x)                              \
     if (!(x)) {                                                \
@@ -28,13 +28,15 @@ class PeopleNetPrePostProcess
         int bottom;
     } boundingbox;
 
+    public:
+    const int INFER_CLASSES = 3;
+
     private:
 
     const int MODEL_WIDTH = 960;
     const int MODEL_HEIGHT = 544;
     const int MODEL_CHANNEL = 3;
 
-    const int INFER_CLASSES = 3;
     const int INFER_BBOX_SIZE = 4;
     const int GRID_WIDTH = 60;
     const int GRID_HEIGHT = 34;
@@ -56,17 +58,17 @@ class PeopleNetPrePostProcess
         width_orig_image = width_orig;
         height_orig_image = height_orig;
 
-        printf("original width=%d, height=%d", 
+        printf("original width=%d, height=%d\n",
             width_orig_image, height_orig_image);
 
         for (int i = 0; i < GRID_WIDTH; i++) {
             grid_centers_w[i] = (i * GRID_STRIDE + 0.5) / GRID_BBOX_NORM;
-            printf("[%d]%lf ", i, grid_centers_w[i]);
+            //printf("[%d]%lf ", i, grid_centers_w[i]);
         }
     
         for (int i = 0; i < GRID_HEIGHT; i++) {
             grid_centers_h[i] = (i * GRID_STRIDE + 0.5) / GRID_BBOX_NORM;
-            printf("[%d]%lf ", i, grid_centers_h[i]);
+            //printf("[%d]%lf ", i, grid_centers_h[i]);
         }
     }
 
@@ -91,7 +93,7 @@ class PeopleNetPrePostProcess
     }
     
     cv::Mat 
-    preProcessPeopleNet
+    preProcess
     (cv::Mat image)
     {
         cv::Mat img_resize = image.clone();
@@ -100,24 +102,25 @@ class PeopleNetPrePostProcess
         /* 入力テンソル int8 : -128 ~ 127 にする */
         double mMin, mMax;
         cv::minMaxLoc(img_resize, &mMin, &mMax);
-        printf("Orig: max = %lf, min = %lf\n", mMax, mMin);
+        //printf("Orig: max = %lf, min = %lf\n", mMax, mMin);
         img_resize.convertTo(img_resize, CV_32SC3);
         cv::Mat offset(MODEL_HEIGHT, MODEL_WIDTH, CV_32SC3, cv::Scalar::all(-128));
         img_resize = img_resize + offset;
         cv::minMaxLoc(img_resize, &mMin, &mMax);
-        printf("SUBed : max = %lf, min = %lf\n", mMax, mMin);
+        //printf("SUBed : max = %lf, min = %lf\n", mMax, mMin);
         img_resize.convertTo(img_resize, CV_8SC3);
         cv::minMaxLoc(img_resize, &mMin, &mMax);
-        printf("Input : max = %lf, min = %lf\n", mMax, mMin);
+        //printf("Input : max = %lf, min = %lf\n", mMax, mMin);
 
         return img_resize;
     }
 
-    std::list<PeopleNetPrePostProcess::boundingbox> 
-    postProcessPeopleNet
-    (float *output_tensor_classes, float *output_tensor_bbox)
+    int
+    postProcess
+    (float *output_tensor_classes, float *output_tensor_bbox,
+     std::list<PeopleNetPrePostProcess::boundingbox> *pboundingboxes)
     {
-        std::list<PeopleNetPrePostProcess::boundingbox> boundingboxes;
+        //std::list<PeopleNetPrePostProcess::boundingbox> boundingboxes[INFER_CLASSES];
 
         for (int c = 0; c < INFER_CLASSES; c++) {
             for (int h = 0; h < GRID_HEIGHT; h++) {
@@ -150,30 +153,36 @@ class PeopleNetPrePostProcess
                         //printf("BBOX Information = %d, %d, %d, %d\n", left, top, right, bottom);
                         PeopleNetPrePostProcess::boundingbox bbox = 
                             {.left=left, .top=top, .right=right, .bottom=bottom};
-                        boundingboxes.push_back(bbox);
+                        pboundingboxes[c].push_back(bbox);
                     }
                 }
             }
         }
-        return boundingboxes;
+        return 0;
     }
     
 };
 
 int main()
 {
-    /* 入力となる画像データを読み込む "4.jpg" */
-    printf("input image path : %s\n", INPUT_FILENAME);
-    cv::Mat image = cv::imread(INPUT_FILENAME);
+    /* Capture */
+    cv::VideoCapture capture;
+    //capture.open(0);
+    capture.open(RESOURCE_DIR"sample_1080p_h265.mp4");
+    if (!capture.isOpened()) {
+        printf("could not found VideoCapture(0)\n");
+        return -1;
+    }
+
+    /* fetch FirstFrame to get Camera Params */
+    cv::Mat image;
+    capture.read(image);
+    cv::imshow("Video", image);
+    const int key = cv::waitKey(1);
+
     int orig_width = image.cols;
     int orig_height = image.rows;
     PeopleNetPrePostProcess peopleNetPrePost(orig_width, orig_height);
-
-    /* ディスプレイに出力する */
-    cv::imwrite("./.tmp.input.jpg", image);
-
-    /* convert from Image to Tensor */
-    cv::Mat input_tensor = peopleNetPrePost.preProcessPeopleNet(image);
 
     /* tfliteモデルのパス */
     printf("model file name : %s\n", MODEL_FILENAME);
@@ -192,37 +201,51 @@ int main()
 
 	/* 入出力のバッファを確保する */
 	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
-	printf("=== Pre-invoke Interpreter State ===\n");
-	tflite::PrintInterpreterState(interpreter.get());
+	//printf("=== Pre-invoke Interpreter State ===\n");
+	//tflite::PrintInterpreterState(interpreter.get());
 
-	/* 入力テンソルに読み込んだ画像を格納する */
-	signed char* input_sc_rgb = interpreter->typed_input_tensor<signed char>(0);
-    memcpy(input_sc_rgb, input_tensor.data, peopleNetPrePost.getSizeOfInputTensor());
-    
-	/* 推論を実行 */
-	TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
-	printf("\n\n=== Post-invoke Interpreter State ===\n");
-	tflite::PrintInterpreterState(interpreter.get());
+    while (true) 
+    {
+        capture.read(image);
 
-	/* 出力テンソルから結果を取得して表示 */
-	float* output_grid_info_bbox = interpreter->typed_output_tensor<float>(0);
-    float* output_grid_info_class = interpreter->typed_output_tensor<float>(1);
+        /* convert from Image to Tensor */
+        cv::Mat input_tensor = peopleNetPrePost.preProcess(image);
 
-    /* 出力テンソルからBoundingBoxを生成する */
-    std::list<PeopleNetPrePostProcess::boundingbox> boundingboxes;
-    boundingboxes = peopleNetPrePost.postProcessPeopleNet(output_grid_info_class, output_grid_info_bbox);
+        /* 入力テンソルに読み込んだ画像を格納する */
+        signed char* input_sc_rgb = interpreter->typed_input_tensor<signed char>(0);
+        memcpy(input_sc_rgb, input_tensor.data, peopleNetPrePost.getSizeOfInputTensor());
+        
+        /* 推論を実行 */
+        TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
+        //printf("\n\n=== Post-invoke Interpreter State ===\n");
+        //tflite::PrintInterpreterState(interpreter.get());
 
-    /* BoundingBoxを描画する */
-    std::list<PeopleNetPrePostProcess::boundingbox>::iterator itr_bbox;
-    for (itr_bbox = boundingboxes.begin(); itr_bbox != boundingboxes.end(); itr_bbox++) {
-        cv::rectangle(image, 
-            cv::Point(itr_bbox->left, itr_bbox->top),
-            cv::Point(itr_bbox->right, itr_bbox->bottom),
-            cv::Scalar(0, 0, 255), 2);
+        /* 出力テンソルから結果を取得して表示 */
+        float* output_grid_info_bbox = interpreter->typed_output_tensor<float>(0);
+        float* output_grid_info_class = interpreter->typed_output_tensor<float>(1);
+
+        /* 出力テンソルからBoundingBoxを生成する */
+        std::list<PeopleNetPrePostProcess::boundingbox> bboxes[peopleNetPrePost.INFER_CLASSES];
+        peopleNetPrePost.postProcess(output_grid_info_class, output_grid_info_bbox, bboxes);
+
+        /* BoundingBoxを描画する */
+        std::list<PeopleNetPrePostProcess::boundingbox>::iterator itr_bbox;
+        for (int c = 0; c < peopleNetPrePost.INFER_CLASSES; c++) {
+            for (itr_bbox = bboxes[c].begin(); itr_bbox != bboxes[c].end(); itr_bbox++) {
+                cv::rectangle(image, 
+                    cv::Point(itr_bbox->left, itr_bbox->top),
+                    cv::Point(itr_bbox->right, itr_bbox->bottom),
+                    cv::Scalar(0, 0, 255), 1);
+            }    
+        }
+
+        cv::imshow("Video", image);
+
+        const int key = cv::waitKey(1);
+        if (key == 'q') {
+            break;
+        }
     }
-
-    /* ディスプレイに出力する */
-    cv::imwrite("./.tmp.output.jpg", image);
 
     /* 終了 */
 	return 0;
