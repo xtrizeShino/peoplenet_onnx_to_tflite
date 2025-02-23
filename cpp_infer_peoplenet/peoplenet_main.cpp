@@ -190,19 +190,19 @@ int main()
     std::unique_ptr<tflite::FlatBufferModel> model = tflite::FlatBufferModel::BuildFromFile(MODEL_FILENAME);
     /* 開けたかチェック */
     TFLITE_MINIMAL_CHECK(model != nullptr);
-    
-	/* インタープリタを生成する */
-	tflite::ops::builtin::BuiltinOpResolver resolver;
-	tflite::InterpreterBuilder builder(*model, resolver);
-	std::unique_ptr<tflite::Interpreter> interpreter;
-	builder(&interpreter);
-    /* 生成できたかチェック */
-	TFLITE_MINIMAL_CHECK(interpreter != nullptr);
 
-	/* 入出力のバッファを確保する */
-	TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
-	//printf("=== Pre-invoke Interpreter State ===\n");
-	//tflite::PrintInterpreterState(interpreter.get());
+    /* インタープリタを生成する */
+    tflite::ops::builtin::BuiltinOpResolver resolver;
+    tflite::InterpreterBuilder builder(*model, resolver);
+    std::unique_ptr<tflite::Interpreter> interpreter;
+    builder(&interpreter);
+    /* 生成できたかチェック */
+    TFLITE_MINIMAL_CHECK(interpreter != nullptr);
+
+    /* 入出力のバッファを確保する */
+    TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
+    //printf("=== Pre-invoke Interpreter State ===\n");
+    //tflite::PrintInterpreterState(interpreter.get());
 
     while (true) 
     {
@@ -247,6 +247,8 @@ int main()
         }
     }
 
+    cv::destroyAllWindows();
+
     /* 終了 */
-	return 0;
+    return 0;
 }
