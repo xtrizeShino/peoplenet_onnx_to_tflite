@@ -7,8 +7,9 @@
 #include "tensorflow/lite/optional_debug_tools.h"
 
 #define MODEL_FILENAME RESOURCE_DIR"resnet34_peoplenet_int8.tflite"
-//#define INPUT_FILENAME RESOURCE_DIR"sample_1080p_h265_frame_input.png"
-#define INPUT_FILENAME RESOURCE_DIR"input.jpg"
+//#define VIDEO_FILENAME RESOURCE_DIR"sample_1080p_h265.mp4"
+#define VIDEO_FILENAME RESOURCE_DIR"1033798799-preview.mp4"
+#define ENABLE_DRAW_ONLY_BODY            
 
 #define TFLITE_MINIMAL_CHECK(x)                              \
     if (!(x)) {                                                \
@@ -153,7 +154,7 @@ class PeopleNetPrePostProcess
                         //printf("BBOX Information = %d, %d, %d, %d\n", left, top, right, bottom);
                         PeopleNetPrePostProcess::boundingbox bbox = 
                             {.left=left, .top=top, .right=right, .bottom=bottom};
-                        pboundingboxes[c].push_back(bbox);
+                            pboundingboxes[c].push_back(bbox);
                     }
                 }
             }
@@ -163,23 +164,38 @@ class PeopleNetPrePostProcess
     
 };
 
-int main()
+int main(int argc, char const *argv[])
 {
-    /* Capture */
-    cv::VideoCapture capture;
-    //capture.open(0);
-    capture.open(RESOURCE_DIR"sample_1080p_h265.mp4");
-    if (!capture.isOpened()) {
-        printf("could not found VideoCapture(0)\n");
-        return -1;
+    int captureCamera = -1;
+
+    /* set Camera ID */
+    if (argc >= 2) {
+        captureCamera = atoi(argv[1]);
     }
 
-    /* fetch FirstFrame to get Camera Params */
+    /* Capture */
+    cv::VideoCapture capture;
+
+    /* open WebCam or VideoFile */
+    if (captureCamera == -1) {
+        /* Video File */
+        capture.open(VIDEO_FILENAME);
+        if (!capture.isOpened()) {
+            printf("could not found VideoCapture(%s)\n", VIDEO_FILENAME);
+            return -1;
+        }    
+    } else {
+        /* Web Camera */
+        capture.open(captureCamera);
+        if (!capture.isOpened()) {
+            printf("could not found VideoCapture(%s)\n", VIDEO_FILENAME);
+            return -1;
+        }
+    }
+
+    /* fetch FirstFrame to get Image Source Params */
     cv::Mat image;
     capture.read(image);
-    cv::imshow("Video", image);
-    const int key = cv::waitKey(1);
-
     int orig_width = image.cols;
     int orig_height = image.rows;
     PeopleNetPrePostProcess peopleNetPrePost(orig_width, orig_height);
@@ -201,12 +217,18 @@ int main()
 
     /* 入出力のバッファを確保する */
     TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
-    //printf("=== Pre-invoke Interpreter State ===\n");
-    //tflite::PrintInterpreterState(interpreter.get());
+    printf("=== Pre-invoke Interpreter State ===\n");
+    tflite::PrintInterpreterState(interpreter.get());
+
+    bool capSuccess = false;
 
     while (true) 
     {
-        capture.read(image);
+        capSuccess = capture.read(image);
+        if (!capSuccess) {
+            capture.set(cv::CAP_PROP_POS_FRAMES, 0);
+            continue;
+        }
 
         /* convert from Image to Tensor */
         cv::Mat input_tensor = peopleNetPrePost.preProcess(image);
@@ -217,8 +239,8 @@ int main()
         
         /* 推論を実行 */
         TFLITE_MINIMAL_CHECK(interpreter->Invoke() == kTfLiteOk);
-        //printf("\n\n=== Post-invoke Interpreter State ===\n");
-        //tflite::PrintInterpreterState(interpreter.get());
+        printf("\n\n=== Post-invoke Interpreter State ===\n");
+        tflite::PrintInterpreterState(interpreter.get());
 
         /* 出力テンソルから結果を取得して表示 */
         float* output_grid_info_bbox = interpreter->typed_output_tensor<float>(0);
@@ -237,9 +259,12 @@ int main()
                     cv::Point(itr_bbox->right, itr_bbox->bottom),
                     cv::Scalar(0, 0, 255), 1);
             }    
+#ifdef ENABLE_DRAW_ONLY_BODY            
+            break;
+#endif            
         }
 
-        cv::imshow("Video", image);
+        cv::imshow("ditection by PeopleNet", image);
 
         const int key = cv::waitKey(1);
         if (key == 'q') {
