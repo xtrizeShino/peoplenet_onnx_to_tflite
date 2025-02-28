@@ -14,11 +14,11 @@ if(OpenCV_FOUND)
 endif()
 
 # For Tensorflow Lite
-target_link_libraries(MnistConv /home/shino/tensorflow/bazel-bin/tensorflow/lite/libtensorflowlite.so)
-target_include_directories(MnistConv PUBLIC /home/shino/tensorflow)
-target_include_directories(MnistConv PUBLIC /home/shino/tensorflow/tensorflow)
-target_include_directories(MnistConv PUBLIC /home/shino/tensorflow/tensorflow/lite)
-target_include_directories(MnistConv PUBLIC  /home/shino/flatbuffers/include)
+target_link_libraries(MnistConv /home/debian/tensorflow/bazel-bin/tensorflow/lite/libtensorflowlite.so)
+target_include_directories(MnistConv PUBLIC /home/debian/tensorflow)
+target_include_directories(MnistConv PUBLIC /home/debian/tensorflow/tensorflow)
+target_include_directories(MnistConv PUBLIC /home/debian/tensorflow/tensorflow/lite)
+target_include_directories(MnistConv PUBLIC  /home/debian/flatbuffers/include)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -std=c++17 -lstdc++")
 
