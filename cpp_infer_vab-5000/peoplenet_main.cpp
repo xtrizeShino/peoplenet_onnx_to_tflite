@@ -13,6 +13,10 @@
 #include <stdexcept>
 #include <string>
 
+using tflite::TFLiteSettings;
+using tflite::TFLiteSettingsBuilder;
+using tflite::delegates::utils::LoadDelegateFromSharedLibrary;
+
 #define MODEL_FILENAME RESOURCE_DIR"resnet34_peoplenet_int8.tflite"
 //#define VIDEO_FILENAME RESOURCE_DIR"sample_1080p_h265.mp4"
 #define VIDEO_FILENAME RESOURCE_DIR"1033798799-preview.mp4"
@@ -214,6 +218,29 @@ int main(int argc, char const *argv[])
     /* 開けたかチェック */
     TFLITE_MINIMAL_CHECK(model != nullptr);
 
+    /* stable delegateを利用する */
+    using tflite::delegates::utils::LoadDelegateFromSharedLibrary;
+    using tflite::delegates::utils::TfLiteSettingsJsonParser;
+    constexpr char kSampleDelegatePath[] = "/usr/lib/libneuron_stable_delegate.so"; 
+    constexpr char kSettingsPath[] = "/home/debian/delegate/stable_delegate_settings.json"; 
+    
+    /* stable delegateを読み込む */
+    const TfLiteStableDelegate* stable_delegate = LoadDelegateFromSharedLibrary(kSampleDelegatePath);
+    TFLITE_MINIMAL_CHECK(stable_delegate != nullptr);
+    TFLITE_MINIMAL_CHECK(stable_delegate->delegate_plugin != nullptr);
+
+    /* Load settings */
+    TfLiteSettingsJsonParser parser;
+    const tflite::TFLiteSettings* settings = parser.Parse(kSettingsPath);
+    TFLITE_MINIMAL_CHECK(settings != nullptr);
+    
+    /* Create opaque delegate */
+    TfLiteOpaqueDelegate* opaque_delegate = stable_delegate->delegate_plugin->create(settings);
+    TFLITE_MINIMAL_CHECK(opaque_delegate != nullptr);
+    absl::Cleanup destroy_opaque_delegate = [&] {
+        stable_delegate->delegate_plugin->destroy(opaque_delegate);
+    }
+
     /* インタープリタを生成する */
     tflite::ops::builtin::BuiltinOpResolver resolver;
     tflite::InterpreterBuilder builder(*model, resolver);
@@ -221,6 +248,15 @@ int main(int argc, char const *argv[])
     builder(&interpreter);
     /* 生成できたかチェック */
     TFLITE_MINIMAL_CHECK(interpreter != nullptr);
+
+    /* Add delegate to the interpreter */
+    if (interpreter->ModifyGraphWithDelegate(opaque_delegate) != kTfLiteOk) {
+        throw std::runtime_error("Failed to modify graph with opaque delegate");
+    }
+
+    /* set Number of Threads */
+    int num_threads = 8;
+    interpreter->SetNumThreads(num_threads);
 
     /* 入出力のバッファを確保する */
     TFLITE_MINIMAL_CHECK(interpreter->AllocateTensors() == kTfLiteOk);
