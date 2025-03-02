@@ -222,7 +222,7 @@ int main(int argc, char const *argv[])
     using tflite::delegates::utils::LoadDelegateFromSharedLibrary;
     using tflite::delegates::utils::TfLiteSettingsJsonParser;
     constexpr char kSampleDelegatePath[] = "/usr/lib/libneuron_stable_delegate.so"; 
-    constexpr char kSettingsPath[] = "/home/debian/delegate/stable_delegate_settings.json"; 
+    constexpr char kSettingsPath[] = "/home/debian/peoplenet_onnx_to_tflite/cpp_infer_vab-5000/build/resource/stable_delegate_settings.json"; 
     
     /* stable delegateを読み込む */
     const TfLiteStableDelegate* stable_delegate = LoadDelegateFromSharedLibrary(kSampleDelegatePath);

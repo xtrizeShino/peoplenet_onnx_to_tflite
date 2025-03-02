@@ -1,0 +1,12 @@
+{
+	"stable_delegate_loader_settings": {
+		"delegate_path": "/usr/lib/libneuron_stable_delegate.so"
+	},
+	"neuron_delegate_settings": {
+		"execution_priority": NEURON_PRIORITY_HIGH,
+		"optimization_hint": NEURON_OPTIMIZATION_NONE,
+		"execution_preference": NEURON_FAST_SINGLE_ANSWER,
+		"allow_fp16": true,
+		"use_ahwb": true
+	}
+}
