@@ -7,5 +7,6 @@
         "list": "cpp",
         "*.tcc": "cpp",
         "istream": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "/home/debian/peoplenet_onnx_to_tflite/cpp_infer_mnist"
 }
