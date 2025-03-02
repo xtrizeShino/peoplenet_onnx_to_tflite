@@ -239,7 +239,7 @@ int main(int argc, char const *argv[])
     TFLITE_MINIMAL_CHECK(opaque_delegate != nullptr);
     absl::Cleanup destroy_opaque_delegate = [&] {
         stable_delegate->delegate_plugin->destroy(opaque_delegate);
-    }
+    };
 
     /* インタープリタを生成する */
     tflite::ops::builtin::BuiltinOpResolver resolver;

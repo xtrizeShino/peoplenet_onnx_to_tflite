@@ -14,9 +14,9 @@ if(OpenCV_FOUND)
 endif()
 
 # For Tensorflow Lite
-target_link_libraries(MnistConv /home/debian/tensorflow/bazel-bin/tensorflow/lite/libtensorflowlite.so)
+target_link_libraries(MnistConv /home/debian/cross-tf/libtensorflowlite.so)
 target_include_directories(MnistConv PUBLIC /home/debian/tensorflow)
-target_include_directories(MnistConv PUBLIC /home/debian/tensorflow/tensorflow)
+target_include_directories(MnistConv PUBLIC /home/debian/tensorcd flow/tensorflow)
 target_include_directories(MnistConv PUBLIC /home/debian/tensorflow/tensorflow/lite)
 target_include_directories(MnistConv PUBLIC  /home/debian/flatbuffers/include)
 
