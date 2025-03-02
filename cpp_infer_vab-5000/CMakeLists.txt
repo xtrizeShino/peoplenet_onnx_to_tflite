@@ -53,22 +53,16 @@ absl::variant
 )
 target_link_libraries(PeopleNetInfer ${protobuf_ABSL_USED_TARGETS})
 
-# flatbuffers
-#add_subdirectory(flatbuffers)
-#target_link_libraries(PeopleNetInfer flatbuffers)
-
 # For Tensorflow Lite
 target_link_libraries(PeopleNetInfer /home/debian/cross-tf/libtensorflowlite.so)
 target_link_libraries(PeopleNetInfer /home/debian/cross-tf/libdelegate_loader.so)
 target_link_libraries(PeopleNetInfer /home/debian/cross-tf/libtflite_settings_json_parser.so)
 target_link_libraries(PeopleNetInfer /home/debian/cross-tf/libandroid_info.so)
 target_link_libraries(PeopleNetInfer /home/debian/peoplenet_onnx_to_tflite/cpp_infer_vab-5000/flatbuffers/build/libflatbuffers.a)
-#target_link_libraries(PeopleNetInfer /home/debian/peoplenet_onnx_to_tflite/cpp_infer_vab-5000/flatbuffers/build/flatc)
 target_include_directories(PeopleNetInfer PUBLIC /home/debian/tensorflow)
 target_include_directories(PeopleNetInfer PUBLIC /home/debian/tensorflow/tensorflow)
 target_include_directories(PeopleNetInfer PUBLIC /home/debian/tensorflow/tensorflow/lite)
 target_include_directories(PeopleNetInfer PUBLIC /home/debian/peoplenet_onnx_to_tflite/cpp_infer_vab-5000/flatbuffers/include)
-#target_include_directories(PeopleNetInfer PUBLIC  /home/debian/flatbuffers/include)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -std=c++17 -lstdc++")
 
