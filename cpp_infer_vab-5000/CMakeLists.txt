@@ -54,10 +54,10 @@ absl::variant
 target_link_libraries(PeopleNetInfer ${protobuf_ABSL_USED_TARGETS})
 
 # For Tensorflow Lite
-target_link_libraries(PeopleNetInfer /home/debian/cross-tf/libtensorflowlite.so)
-target_link_libraries(PeopleNetInfer /home/debian/cross-tf/libdelegate_loader.so)
-target_link_libraries(PeopleNetInfer /home/debian/cross-tf/libtflite_settings_json_parser.so)
-target_link_libraries(PeopleNetInfer /home/debian/cross-tf/libandroid_info.so)
+target_link_libraries(PeopleNetInfer /home/debian/peoplenet_onnx_to_tflite/cpp_infer_vab-5000/cross-tf/libtensorflowlite.so)
+target_link_libraries(PeopleNetInfer /home/debian/peoplenet_onnx_to_tflite/cpp_infer_vab-5000/cross-tf/libdelegate_loader.so)
+target_link_libraries(PeopleNetInfer /home/debian/peoplenet_onnx_to_tflite/cpp_infer_vab-5000/cross-tf/libtflite_settings_json_parser.so)
+target_link_libraries(PeopleNetInfer /home/debian/peoplenet_onnx_to_tflite/cpp_infer_vab-5000/cross-tf/libandroid_info.so)
 target_link_libraries(PeopleNetInfer /home/debian/peoplenet_onnx_to_tflite/cpp_infer_vab-5000/flatbuffers/build/libflatbuffers.a)
 target_include_directories(PeopleNetInfer PUBLIC /home/debian/tensorflow)
 target_include_directories(PeopleNetInfer PUBLIC /home/debian/tensorflow/tensorflow)
